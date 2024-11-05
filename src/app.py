@@ -5,81 +5,99 @@ engine = db_connect()
 
 import pandas as pd
 
-total_data = pd.read_csv("https://raw.githubusercontent.com/4GeeksAcademy/regularized-linear-regression-project-tutorial/main/demographic_health_data.csv", sep = ",")
-total_data = total_data.drop_duplicates().reset_index(drop = True)
-total_data.head()
+diabetes_data = pd.read_csv("https://raw.githubusercontent.com/4GeeksAcademy/decision-tree-project-tutorial/main/diabetes.csv")
+diabetes_data = diabetes_data.drop_duplicates().reset_index(drop = True)
+diabetes_data.head()
 
-from sklearn.preprocessing import StandardScaler
 
-data_types = total_data.dtypes
-numeric_columns = [c for c in list(data_types[data_types != "object"].index) if c != "Heart disease_number"]
+# No normalization of variables is needed for training this model
 
-scaler = StandardScaler()
-norm_features = scaler.fit_transform(total_data[numeric_columns])
+# Feature selection
 
-# Create a new DataFrame with the scaled numerical variables
-total_data_scal = pd.DataFrame(norm_features, index = total_data.index, columns = numeric_columns)
-total_data_scal["Heart disease_number"] = total_data["Heart disease_number"]
-total_data_scal.head()
-
+from sklearn.feature_selection import SelectKBest
 from sklearn.model_selection import train_test_split
-from sklearn.feature_selection import SelectKBest, f_regression
 
-X = total_data_scal.drop(columns=["Heart disease_number"])
-y = total_data_scal["Heart disease_number"]
+X = diabetes_data.drop("Outcome", axis = 1)
+y = diabetes_data["Outcome"]
+
 X_train, X_test, y_train, y_test = train_test_split(X, y, test_size = 0.2, random_state = 42)
-train_indices = list(X_train.index)
-test_indices = list(X_test.index)
 
-k = int(len(X_train.columns) * 0.3)
-selection_model = SelectKBest(score_func = f_regression, k = k)
+selection_model = SelectKBest(k = 7)
 selection_model.fit(X_train, y_train)
-ix = selection_model.get_support()
 
-X_train_sel = pd.DataFrame(selection_model.transform(X_train), columns = X_train.columns.values[ix])
-X_test_sel = pd.DataFrame(selection_model.transform(X_test), columns = X_test.columns.values[ix])
+selected_columns = X_train.columns[selection_model.get_support()]
+X_train_sel = pd.DataFrame(selection_model.transform(X_train), columns = selected_columns)
+X_test_sel = pd.DataFrame(selection_model.transform(X_test), columns = selected_columns)
 
-X_train_sel.head()
-X_test_sel.head()
-
-X_train_sel["Heart disease_number"] = list(y_train)
-X_test_sel["Heart disease_number"] = list(y_test)
+X_train_sel["Outcome"] = y_train.values
+X_test_sel["Outcome"] = y_test.values
 
 train_data = X_train_sel
+
 test_data = X_test_sel
 
-X_train = train_data.drop(["Heart disease_number"], axis = 1)
-y_train = train_data["Heart disease_number"]
-X_test = test_data.drop(["Heart disease_number"], axis = 1)
-y_test = test_data["Heart disease_number"]
+import matplotlib.pyplot as plt
 
+plt.figure(figsize=(12, 6))
 
-from sklearn.linear_model import LogisticRegression
+pd.plotting.parallel_coordinates(total_data, "Outcome", color = ("#E58139", "#39E581", "#8139E5"))
 
-model = LogisticRegression()
+plt.show()
+
+X_train = train_data.drop(["Outcome"], axis = 1)
+y_train = train_data["Outcome"]
+X_test = test_data.drop(["Outcome"], axis = 1)
+y_test = test_data["Outcome"]
+
+from sklearn.tree import DecisionTreeClassifier
+
+model = DecisionTreeClassifier(random_state = 42)
 model.fit(X_train, y_train)
 
-print(f"Intercep (a): {model.intercept_}")
-print(f"Coefficients: {model.coef_}")
+from sklearn import tree
+
+fig = plt.figure(figsize=(15,15))
+
+tree.plot_tree(model, feature_names = list(X_train.columns), class_names = ["0", "1", "2"], filled = True)
+
+plt.show()
 
 y_pred = model.predict(X_test)
 y_pred
 
-from sklearn.metrics import mean_squared_error, r2_score
+from sklearn.metrics import accuracy_score
 
-print(f"MSE: {mean_squared_error(y_test, y_pred)}")
-print(f"R2 Score: {r2_score(y_test, y_pred)}")
-from sklearn.linear_model import Lasso
+accuracy_score(y_test, y_pred)
 
-alpha = 1.0
-lasso_model = Lasso(alpha = alpha)
+from sklearn.model_selection import GridSearchCV
+from sklearn.tree import DecisionTreeClassifier
 
-# Training the model
-lasso_model.fit(X_train, y_train)
+hyperparams = {
+    "criterion": ["gini", "entropy"],
+    "max_depth": [None, 5, 10, 20],
+    "min_samples_split": [2, 5, 10],
+    "min_samples_leaf": [1, 2, 4]
+}
 
-# We evaluate the performance of the model on the test data
-score = lasso_model.score(X_test, y_test)
-print("Coefficients:", lasso_model.coef_)
-print("R2 score:", score)
+grid = GridSearchCV(model, hyperparams, scoring = "accuracy", cv = 10)
+grid
 
+def warn(*args, **kwargs):
+    pass
+import warnings
+warnings.warn = warn
+
+grid.fit(X_train, y_train)
+
+print(f"Best hyperparameters: {grid.best_params_}")
+
+model = DecisionTreeClassifier(criterion = "entropy", max_depth = 5, min_samples_leaf = 4, min_samples_split = 2, random_state = 42)
+model.fit(X_train, y_train)
+
+y_pred = model.predict(X_test)
+y_pred
+
+from sklearn.metrics import accuracy_score
+
+accuracy_score(y_test, y_pred)
 
